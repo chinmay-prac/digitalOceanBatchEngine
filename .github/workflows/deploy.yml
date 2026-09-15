@@ -1,0 +1,80 @@
+name: Deploy Demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: digitalocean-demo
+  cancel-in-progress: false
+
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require deployment branch
+        run: test "$GITHUB_REF_NAME" = "v1"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Verify
+        run: ./mvnw --batch-mode clean verify
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Create or update App Platform app
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_ID="$(doctl apps list --format ID,Spec.Name --no-header \
+            | awk '$2 == "batch-inference-engine" { print $1; exit }')"
+
+          if [[ -z "$APP_ID" ]]; then
+            APP_ID="$(doctl apps create \
+              --spec .do/app.yaml \
+              --wait \
+              --format ID \
+              --no-header)"
+          else
+            doctl apps update "$APP_ID" \
+              --spec .do/app.yaml \
+              --update-sources \
+              --wait >/dev/null
+          fi
+
+          INGRESS="$(doctl apps get "$APP_ID" \
+            --format DefaultIngress \
+            --no-header)"
+          if [[ "$INGRESS" == http* ]]; then
+            APP_URL="$INGRESS"
+          else
+            APP_URL="https://$INGRESS"
+          fi
+
+          echo "app-id=$APP_ID" >> "$GITHUB_OUTPUT"
+          echo "app-url=$APP_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed health
+        run: |
+          curl --fail --show-error \
+            --retry 20 \
+            --retry-all-errors \
+            --retry-delay 10 \
+            "${{ steps.deploy.outputs.app-url }}/actuator/health"
+
+      - name: Publish demo URL
+        run: |
+          echo "### DigitalOcean demo" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.deploy.outputs.app-url }}" >> "$GITHUB_STEP_SUMMARY"

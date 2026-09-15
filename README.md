@@ -122,8 +122,13 @@ docker run --rm -p 8080:8080 batch-inference-engine
 database to DigitalOcean App Platform:
 
 ```bash
-doctl apps create --spec .do/app.yaml
+doctl apps create --spec .do/app.yaml --wait
 ```
+
+For the recommended GitHub Actions deployment and copy-paste demo commands, see
+[DEMO.md](DEMO.md). CI runs on every push and pull request. The separate
+`Deploy Demo` workflow is manual, verifies the code, creates or updates the App
+Platform app, waits for deployment, and verifies its health endpoint.
 
 ## Scope and limitations
 

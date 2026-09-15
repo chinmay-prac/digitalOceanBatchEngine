@@ -1,0 +1,8 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:batchtest;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+
+inference:
+  initial-backoff-ms: 0

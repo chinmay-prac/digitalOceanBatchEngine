@@ -44,7 +44,9 @@ These decisions fill gaps in the supplied prompt and should be confirmed if poss
 - Use exponential backoff beginning at 100 milliseconds.
 - After retry exhaustion, mark that prompt failed and allow the batch to complete as `PARTIALLY_FAILED`.
 - Preserve the original input order in final output.
-- Store batches and results in memory for the exercise; database persistence is deferred to protect the implementation and deployment window.
+- Persist batches, input prompts, prompt states, attempts, outputs, and errors in PostgreSQL.
+- Use Flyway migrations and Spring JDBC; use H2 in PostgreSQL mode for local development and tests.
+- Keep in-memory batch contexts only for active-process coordination.
 - Expose a final-result endpoint so the acknowledged batch can be retrieved later.
 - Duplicate prompts are independent work items; idempotency is not required.
 
@@ -52,7 +54,7 @@ These decisions fill gaps in the supplied prompt and should be confirmed if poss
 
 - **Bounded concurrency:** Fixed worker count and bounded task queue.
 - **Responsiveness:** Batch ingestion returns `202 Accepted` after registration and scheduling, without waiting for inference completion.
-- **Correctness:** Every accepted prompt reaches a terminal state and appears in the final batch outcome.
+- **Correctness:** Every accepted prompt reaches a terminal state and appears in the final persisted batch outcome.
 - **Thread safety:** Concurrent workers update batch progress and results safely.
 - **Configurability:** Worker count, executor queue capacity, batch size, attempts, and backoff are externalized.
 - **Testability:** Retry sleeping and inference calls are injectable.
@@ -194,7 +196,7 @@ Each prompt moves from `PENDING` to `PROCESSING`, then to either `COMPLETED` or 
 
 ```mermaid
 flowchart TD
-    A["Batch API"] --> B["In-memory batch store"]
+    A["Batch API"] --> B["PostgreSQL batch store"]
     B --> C["Bounded executor"]
     C --> D["Retryable inference service"]
     D --> E["Mock inference client"]
@@ -214,7 +216,8 @@ flowchart TD
 - `InferenceClient`: Abstraction for inference calls.
 - `MockInferenceClient`: Deterministic mock rate-limited implementation.
 - `Sleeper`: Abstraction around sleeping for testability.
-- `InMemoryBatchStore`: Concurrent map of batch IDs to batch contexts.
+- `JdbcBatchStore`: Transactional persisted batch and prompt state.
+- `InMemoryBatchStore`: Concurrent map used only for active batch contexts.
 - `BatchContext`: Atomic progress counters and indexed concurrent results.
 
 ## 8. End-to-End Flow
@@ -223,7 +226,7 @@ flowchart TD
 
 1. Controller validates and parses the uploaded text file.
 2. Service generates a UUID `batchId`.
-3. Service creates and stores a `BatchContext` with total prompt count.
+3. Service persists the batch and all indexed input prompts, then registers an active `BatchContext`.
 4. Service submits one task per prompt to the bounded executor.
 5. Controller returns `202 Accepted` without waiting for those tasks.
 
@@ -231,16 +234,16 @@ flowchart TD
 
 1. Worker changes the prompt state to `PROCESSING`.
 2. Worker calls `RetryableInferenceService`.
-3. On success, store the output and number of attempts.
+3. On success, transactionally store the output and number of attempts.
 4. On HTTP 429 with attempts remaining, sleep and retry.
 5. On exhausted 429 or non-retryable failure, store a failed result.
 6. Increment exactly one terminal counter.
 7. Increment `finishedCount` once.
-8. If `finishedCount == total`, compute the final batch state.
+8. If `finishedCount == total`, compute and persist the final batch state.
 
 ### Retrieval
 
-1. Query the batch store by `batchId`.
+1. Query PostgreSQL by `batchId`.
 2. Return progress counters immediately.
 3. For final results, sort indexed results by input index.
 
@@ -257,7 +260,7 @@ For the expected maximum of 1,000 prompts, configure enough queue capacity to ho
 
 ### Shared State
 
-- Store batches in `ConcurrentHashMap<UUID, BatchContext>`.
+- Store active contexts in `ConcurrentHashMap<UUID, BatchContext>` and authoritative state in PostgreSQL.
 - Use `AtomicInteger` or `LongAdder` for counters.
 - Store results by input index using `ConcurrentHashMap<Integer, PromptResult>`.
 - Avoid concurrent writes to ordinary `ArrayList`.
@@ -311,6 +314,14 @@ Example error body:
 ## 12. Configuration
 
 ```yaml
+spring:
+  datasource:
+    url: ${JDBC_DATABASE_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  flyway:
+    enabled: true
+
 server:
   port: ${PORT:8080}
   address: 0.0.0.0
@@ -346,6 +357,8 @@ Highest-priority tests:
 10. Final output follows input order despite out-of-order completion.
 11. Mixed outcomes produce `PARTIALLY_FAILED`.
 12. Status/results return `404` for an unknown batch.
+13. Persisted terminal results survive context loss.
+14. Startup recovery marks unfinished persisted prompts failed.
 
 Tests must mock `Sleeper`; they must not wait for real backoff durations.
 
@@ -365,6 +378,7 @@ Expose `/actuator/health`. Useful metrics include active workers, executor queue
 ## 15. Deployment and CI
 
 - Package as an executable Spring Boot JAR.
+- Run Flyway migrations against managed PostgreSQL during startup.
 - Provide a multi-stage Dockerfile.
 - Bind to `0.0.0.0` and `${PORT:8080}`.
 - GitHub Actions runs `./mvnw --batch-mode clean verify` for pushes and pull requests.
@@ -372,9 +386,8 @@ Expose `/actuator/health`. Useful metrics include active workers, executor queue
 
 ## 16. Trade-offs and Production Evolution
 
-The in-memory implementation is intentionally scoped to the exercise. It loses state on restart and does not coordinate several application replicas. For production:
+PostgreSQL preserves submitted prompts and results across restart. On startup, unfinished prompts are marked failed because the bounded executor itself is not a durable queue. Multiple replicas still require work claiming or a broker. For production:
 
-- Persist batch metadata and results.
 - Use a durable broker for accepted work.
 - Use delayed retries rather than sleeping worker threads.
 - Add retention and cleanup policies.

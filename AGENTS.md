@@ -28,7 +28,9 @@ This is a ninety-minute coding, deployment, and design exercise followed by code
 - Retry only rate-limit failures. Use three total attempts by default with configurable sleep-based exponential backoff and attempt count.
 - Inject a `Sleeper` abstraction so unit tests never perform real waits.
 - Preserve prompt input order by assigning every prompt an index and ordering results by that index.
-- Keep batch state in a thread-safe in-memory store for the exercise.
+- Persist batches, prompts, states, attempts, outputs, and errors through Spring JDBC.
+- Use PostgreSQL in deployment, H2 PostgreSQL mode locally, and Flyway as the only schema owner.
+- Keep a thread-safe in-memory context only for coordination while a batch is actively executing.
 - Use atomic counters and concurrent collections for shared mutable state.
 - Permit partial batch failure after retries are exhausted; never discard an item silently.
 - Treat the status API as an extension to implement only after the core path and retry tests pass.
@@ -38,7 +40,7 @@ This is a ninety-minute coding, deployment, and design exercise followed by code
 Do not introduce any of the following unless the prompt is changed explicitly:
 
 - Kafka or Flink
-- PostgreSQL, JPA, Flyway, or another external database
+- JPA or Hibernate schema generation
 - Distributed locks, leases, or multi-instance coordination
 - Kubernetes
 - Priority scheduling
@@ -76,6 +78,8 @@ Prompt result states:
 8. Final results are returned in original prompt order regardless of completion order.
 9. Concurrent updates must not use an ordinary mutable `ArrayList` or non-atomic counters without synchronization.
 10. Interrupted sleeps restore the thread's interrupt flag.
+11. Acknowledged batches and terminal results survive process restart.
+12. Restart recovery terminally fails unfinished persisted prompts.
 
 ## Working Rules for Cursor
 

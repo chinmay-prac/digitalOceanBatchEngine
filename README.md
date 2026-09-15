@@ -5,6 +5,10 @@ with `202 Accepted`, and processes every line asynchronously through a bounded
 mock inference worker pool. HTTP 429-like failures use three total attempts with
 testable exponential backoff.
 
+Batch inputs, progress, attempts, outputs, and errors are persisted through
+Spring JDBC. Flyway owns the schema. Local runs default to an H2 file in
+PostgreSQL mode; DigitalOcean uses managed PostgreSQL.
+
 ## Run locally
 
 Prerequisites: Java 17+.
@@ -50,13 +54,14 @@ terminal results when complete. Unknown IDs return `404`; invalid uploads return
 
 ```mermaid
 flowchart LR
-    A[TXT upload] --> B[Validate and register]
-    B --> C[Bounded executor]
-    C --> D[Mock inference client]
-    D -->|429| E[Exponential sleep]
-    E --> D
-    D -->|terminal result| F[Thread-safe indexed aggregation]
-    F --> G[Status and results APIs]
+    A[TXT upload] --> B[Validate and persist]
+    B --> C[PostgreSQL]
+    B --> D[Bounded executor]
+    D --> E[Mock inference client]
+    E -->|429| F[Exponential sleep]
+    F --> E
+    E -->|terminal result| C
+    C --> G[Status and results APIs]
 ```
 
 The executor has a fixed worker count and bounded queue. Admission is serialized
@@ -81,6 +86,9 @@ records that prompt as failed.
 | `MAX_ATTEMPTS` | `3` |
 | `INITIAL_BACKOFF_MS` | `100` |
 | `MOCK_RATE_LIMIT_EVERY` | `4` |
+| `JDBC_DATABASE_URL` | Local H2 file |
+| `DB_USERNAME` | `sa` |
+| `DB_PASSWORD` | empty |
 
 The deterministic mock rate-limits the first attempt of every Nth prompt; set
 `MOCK_RATE_LIMIT_EVERY=0` to disable it.
@@ -92,7 +100,8 @@ docker build -t batch-inference-engine .
 docker run --rm -p 8080:8080 batch-inference-engine
 ```
 
-`.do/app.yaml` deploys the Dockerfile to DigitalOcean App Platform:
+`.do/app.yaml` deploys the Dockerfile and a development managed PostgreSQL
+database to DigitalOcean App Platform:
 
 ```bash
 doctl apps create --spec .do/app.yaml
@@ -100,8 +109,7 @@ doctl apps create --spec .do/app.yaml
 
 ## Scope and limitations
 
-State is intentionally in memory: application restart loses batches, and multiple
-replicas do not share state. A production version should persist metadata/results
-and place accepted work on a durable queue. Delayed retries should replace sleeping
-workers when backoffs become long. Database persistence is deliberately deferred
-to keep this exercise complete, testable, and deployable within its time limit.
+Persisted batches and terminal results survive restart. Since the executor is not
+a durable queue, startup recovery marks unfinished prompts failed; it does not
+resume them. Multiple replicas still need work claiming or a durable broker.
+Delayed retries should replace sleeping workers when backoffs become long.

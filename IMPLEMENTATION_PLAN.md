@@ -29,7 +29,7 @@
 4. After attempts are exhausted, mark that prompt failed and allow the batch to finish.
 5. Retrieve aggregated output as JSON through the results endpoint.
 6. Preserve input order as a deterministic, low-cost implementation detail.
-7. Keep state in memory for this exercise. Defer database persistence so deployment fits the time limit.
+7. Persist batches, prompts, states, attempts, outputs, and errors through Spring JDBC and Flyway.
 
 ### Completion Criteria
 
@@ -76,6 +76,8 @@
 - Add `PromptResult` containing original index, status, output, attempts, and error.
 - Add thread-safe `BatchContext`.
 - Add `InMemoryBatchStore` backed by `ConcurrentHashMap`.
+- Add transactional `JdbcBatchStore` backed by PostgreSQL.
+- Add a Flyway migration for batch and indexed prompt tables.
 - Configure bounded `ThreadPoolTaskExecutor`.
 - Bind typed configuration properties.
 
@@ -100,7 +102,7 @@
 
 ### Cursor Prompt
 
-> Implement only Section 2. Add the state model, DTOs, thread-safe in-memory batch context/store, typed configuration, and a bounded `ThreadPoolTaskExecutor`. Preserve input ordering using prompt indexes. Do not add controllers, retry logic, or inference execution. Add focused tests and run them, then run the full suite.
+> Implement only Section 2. Add the state model, DTOs, active in-memory context store, transactional JDBC persistence with Flyway, typed configuration, and a bounded `ThreadPoolTaskExecutor`. Preserve input ordering using prompt indexes. Do not add controllers, retry logic, or inference execution. Add focused tests and run them, then run the full suite.
 
 ## Section 3 — Core Vertical Slice
 
@@ -210,7 +212,7 @@
 
 ### Cursor Prompt
 
-> Implement only Section 5. Add request validation, maximum batch enforcement, consistent API errors, and explicit executor-rejection behavior. Do not add persistence or unrelated features. Add focused tests and run the full suite.
+> Implement only Section 5. Add request validation, maximum batch enforcement, consistent API errors, and explicit executor-rejection behavior. Do not add unrelated features. Add focused tests and run the full suite.
 
 ## Section 6 — Progress Endpoint Extension
 

@@ -1,6 +1,12 @@
 spring:
   application:
     name: batch-inference-engine
+  datasource:
+    url: "${JDBC_DATABASE_URL:jdbc:h2:file:./data/batches;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE}"
+    username: "${DB_USERNAME:sa}"
+    password: "${DB_PASSWORD:}"
+  flyway:
+    enabled: true
   servlet:
     multipart:
       max-file-size: 2MB

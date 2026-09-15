@@ -12,5 +12,22 @@ services:
     http_port: 8080
     instance_count: 1
     instance_size_slug: apps-s-1vcpu-0.5gb
+    envs:
+      - key: JDBC_DATABASE_URL
+        scope: RUN_TIME
+        value: ${batch-db.JDBC_DATABASE_URL}
+      - key: DB_USERNAME
+        scope: RUN_TIME
+        value: ${batch-db.USERNAME}
+      - key: DB_PASSWORD
+        scope: RUN_TIME
+        type: SECRET
+        value: ${batch-db.PASSWORD}
     health_check:
       http_path: /actuator/health
+
+databases:
+  - name: batch-db
+    engine: PG
+    version: "16"
+    production: false

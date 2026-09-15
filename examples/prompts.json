@@ -1,0 +1,22 @@
+[
+  "Explain bounded concurrency in one sentence.",
+  "Summarize exponential backoff.",
+  "Describe why batch APIs return HTTP 202.",
+  "Explain how retrying HTTP 429 prevents dropped work.",
+  "Give one benefit of preserving input order.",
+  "Describe the purpose of a fixed worker pool.",
+  "Explain why database migrations should be versioned.",
+  "Summarize how partial batch failures are represented.",
+  "Give one advantage of asynchronous processing.",
+  "Explain why shared counters must be atomic.",
+  "Describe the role of an inference client interface.",
+  "Explain why retry attempts should be configurable.",
+  "Summarize the difference between pending and processing.",
+  "Give one reason to persist batch results.",
+  "Explain what a bounded task queue protects against.",
+  "Describe how a deterministic mock helps testing.",
+  "Explain why non-rate-limit failures are not retried.",
+  "Summarize the purpose of a health endpoint.",
+  "Give one production use case for a durable queue.",
+  "Describe how Flyway initializes a new database."
+]

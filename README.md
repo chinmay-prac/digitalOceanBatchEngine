@@ -46,6 +46,39 @@ The results endpoint returns `202` while work is running and `200` with ordered
 terminal results when complete. Unknown IDs return `404`; invalid uploads return
 `400`; a batch that cannot fit in the bounded executor returns `503`.
 
+### Run the reusable JSON demo
+
+Choose either the local or deployed URL:
+
+```bash
+APP_URL="http://localhost:8080"
+# APP_URL="https://lionfish-app-87qj5.ondigitalocean.app"
+```
+
+Submit the 20-prompt example and capture its batch ID:
+
+```bash
+SUBMISSION="$(curl --fail --silent --show-error \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/prompts.json \
+  "$APP_URL/api/v1/batches")"
+echo "$SUBMISSION"
+
+BATCH_ID="$(printf '%s' "$SUBMISSION" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["batchId"])')"
+```
+
+Query progress, then retrieve the ordered results:
+
+```bash
+curl "$APP_URL/api/v1/batches/$BATCH_ID"
+curl -i "$APP_URL/api/v1/batches/$BATCH_ID/results"
+```
+
+Repeat the results request if it returns `202`; terminal results return `200`.
+With the default mock configuration, every fourth prompt is rate-limited on its
+first attempt and then succeeds on its second attempt.
+
 ## Input contracts
 
 - Raw `application/json` array of prompt strings, or

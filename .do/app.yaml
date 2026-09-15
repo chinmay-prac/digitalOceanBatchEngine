@@ -1,0 +1,16 @@
+name: batch-inference-engine
+region: blr
+
+services:
+  - name: api
+    github:
+      repo: chinmay-prac/digitalOceanBatchEngine
+      branch: v1
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    source_dir: /
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    health_check:
+      http_path: /actuator/health

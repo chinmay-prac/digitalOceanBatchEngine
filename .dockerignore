@@ -1,0 +1,10 @@
+.git
+.github
+.idea
+.vscode
+target
+*.iml
+HELP.md
+AGENTS.md
+DESIGN.md
+IMPLEMENTATION_PLAN.md

@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: batch-inference-engine
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
+
+server:
+  port: ${PORT:8080}
+  address: 0.0.0.0
+
+inference:
+  max-batch-size: ${MAX_BATCH_SIZE:1000}
+  worker-count: ${WORKER_COUNT:8}
+  queue-capacity: ${QUEUE_CAPACITY:2000}
+  max-attempts: ${MAX_ATTEMPTS:3}
+  initial-backoff-ms: ${INITIAL_BACKOFF_MS:100}
+  mock-rate-limit-every: ${MOCK_RATE_LIMIT_EVERY:4}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true

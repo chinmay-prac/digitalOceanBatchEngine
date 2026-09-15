@@ -48,6 +48,24 @@ terminal results when complete. Unknown IDs return `404`; invalid uploads return
 
 ### Run the reusable JSON demo
 
+Submit the included JSON file directly to the deployed application:
+
+```bash
+curl -X POST \
+  https://lionfish-app-87qj5.ondigitalocean.app/api/v1/batches \
+  -H "Content-Type: application/json" \
+  --data-binary @examples/prompts.json
+```
+
+Or send a JSON array inline:
+
+```bash
+curl -X POST \
+  https://lionfish-app-87qj5.ondigitalocean.app/api/v1/batches \
+  -H "Content-Type: application/json" \
+  -d '["one","two","three","four"]'
+```
+
 Choose either the local or deployed URL:
 
 ```bash

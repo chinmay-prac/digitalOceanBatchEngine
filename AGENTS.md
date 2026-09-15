@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build a Java 17 Spring Boot REST API that accepts a multipart UTF-8 `.txt` file with one non-blank prompt per line, acknowledges the batch immediately, processes prompts concurrently against a mock rate-limited inference endpoint, retries HTTP 429 responses with sleep-based backoff, and aggregates successful results.
+Build a Java 17 Spring Boot REST API that accepts either a raw JSON prompt array or a multipart UTF-8 `.txt` file with one non-blank prompt per line, acknowledges the batch immediately, processes prompts concurrently against a mock HTTP inference endpoint, retries actual HTTP 429 responses with sleep-based backoff, and aggregates successful results.
 
 This is a ninety-minute coding, deployment, and design exercise followed by code review. Prefer a small, complete, tested implementation over production-scale infrastructure.
 
@@ -24,7 +24,7 @@ This is a ninety-minute coding, deployment, and design exercise followed by code
 - Use a bounded `ThreadPoolTaskExecutor`; never create one thread per prompt.
 - Return `202 Accepted` after registering and scheduling a batch; do not wait for inference completion.
 - Hide inference behind an `InferenceClient` interface.
-- Provide a deterministic mock implementation that can return a rate-limit result equivalent to HTTP 429.
+- Provide a deterministic mock HTTP controller and call it through an `InferenceClient` HTTP adapter that converts actual HTTP 429 responses into retryable failures.
 - Retry only rate-limit failures. Use three total attempts by default with configurable sleep-based exponential backoff and attempt count.
 - Inject a `Sleeper` abstraction so unit tests never perform real waits.
 - Preserve prompt input order by assigning every prompt an index and ordering results by that index.

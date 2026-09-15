@@ -32,20 +32,24 @@ public class BatchFileParser {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
             List<String> prompts = reader.lines().toList();
-            if (prompts.isEmpty()) {
-                throw new InvalidBatchFileException("The file must contain at least one prompt");
-            }
-            if (prompts.size() > properties.getMaxBatchSize()) {
-                throw new InvalidBatchFileException(
-                        "The file exceeds the maximum batch size of "
-                                + properties.getMaxBatchSize());
-            }
-            if (prompts.stream().anyMatch(String::isBlank)) {
-                throw new InvalidBatchFileException("Every line must contain a non-blank prompt");
-            }
-            return prompts;
+            return validate(prompts);
         } catch (IOException exception) {
             throw new InvalidBatchFileException("The uploaded file could not be read");
         }
+    }
+
+    public List<String> validate(List<String> prompts) {
+        if (prompts == null || prompts.isEmpty()) {
+            throw new InvalidBatchFileException("At least one prompt is required");
+        }
+        if (prompts.size() > properties.getMaxBatchSize()) {
+            throw new InvalidBatchFileException(
+                    "The input exceeds the maximum batch size of "
+                            + properties.getMaxBatchSize());
+        }
+        if (prompts.stream().anyMatch(prompt -> prompt == null || prompt.isBlank())) {
+            throw new InvalidBatchFileException("Every prompt must be non-blank");
+        }
+        return List.copyOf(prompts);
     }
 }

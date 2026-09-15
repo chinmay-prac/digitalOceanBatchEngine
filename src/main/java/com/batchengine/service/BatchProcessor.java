@@ -9,6 +9,7 @@ import com.batchengine.model.PromptStatus;
 import com.batchengine.store.JdbcBatchStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -17,18 +18,26 @@ public class BatchProcessor {
     private static final Logger log = LoggerFactory.getLogger(BatchProcessor.class);
     private final RetryableInferenceService inferenceService;
     private final JdbcBatchStore persistentStore;
+    private final CompletionPersistenceCoordinator persistenceCoordinator;
 
     public BatchProcessor(
             RetryableInferenceService inferenceService,
-            JdbcBatchStore persistentStore) {
+            JdbcBatchStore persistentStore,
+            CompletionPersistenceCoordinator persistenceCoordinator) {
         this.inferenceService = inferenceService;
         this.persistentStore = persistentStore;
+        this.persistenceCoordinator = persistenceCoordinator;
     }
 
     public void process(BatchContext context, String prompt, int index) {
         long started = System.nanoTime();
         context.markProcessing(index);
-        persistentStore.markProcessing(context.batchId(), index);
+        try {
+            persistentStore.markProcessing(context.batchId(), index);
+        } catch (DataAccessException exception) {
+            log.error("batchId={} promptIndex={} could not persist PROCESSING state",
+                    context.batchId(), index, exception);
+        }
         PromptResult result;
         try {
             InferenceOutcome outcome = inferenceService.infer(prompt, index);
@@ -45,9 +54,8 @@ public class BatchProcessor {
                     context.batchId(), index, exception);
         }
 
-        if (persistentStore.complete(context.batchId(), result)) {
-            context.complete(result);
-        }
+        persistenceCoordinator.persist(context.batchId(), result);
+        context.complete(result);
         if (result.status() == PromptStatus.COMPLETED) {
             log.info("batchId={} promptIndex={} attempts={} status={} durationMs={}",
                     context.batchId(), index, result.attempts(),

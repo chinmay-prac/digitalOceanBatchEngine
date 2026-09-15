@@ -1,9 +1,9 @@
 # Batch Inference Engine
 
-Java 17/Spring Boot service that accepts a text file of prompts, acknowledges it
-with `202 Accepted`, and processes every line asynchronously through a bounded
-mock inference worker pool. HTTP 429-like failures use three total attempts with
-testable exponential backoff.
+Java 17/Spring Boot service that accepts a raw JSON prompt array or text file,
+acknowledges it with `202 Accepted`, and processes each prompt asynchronously
+through a bounded worker pool. A loopback mock HTTP endpoint returns real HTTP
+429 responses; retry uses three total attempts with testable exponential backoff.
 
 Batch inputs, progress, attempts, outputs, and errors are persisted through
 Spring JDBC. Flyway owns the schema. Local runs default to an H2 file in
@@ -33,6 +33,10 @@ Submit and query it:
 curl -i -F 'file=@prompts.txt;type=text/plain' \
   http://localhost:8080/api/v1/batches
 
+curl -i -H 'Content-Type: application/json' \
+  -d '["one","two","three","four"]' \
+  http://localhost:8080/api/v1/batches
+
 curl http://localhost:8080/api/v1/batches/{batchId}
 curl -i http://localhost:8080/api/v1/batches/{batchId}/results
 curl http://localhost:8080/actuator/health
@@ -42,8 +46,9 @@ The results endpoint returns `202` while work is running and `200` with ordered
 terminal results when complete. Unknown IDs return `404`; invalid uploads return
 `400`; a batch that cannot fit in the bounded executor returns `503`.
 
-## Input contract
+## Input contracts
 
+- Raw `application/json` array of prompt strings, or
 - `multipart/form-data` part named `file`
 - UTF-8 filename ending in `.txt`
 - One non-blank prompt per line
@@ -54,19 +59,20 @@ terminal results when complete. Unknown IDs return `404`; invalid uploads return
 
 ```mermaid
 flowchart LR
-    A[TXT upload] --> B[Validate and persist]
+    A[JSON array or TXT upload] --> B[Validate and persist]
     B --> C[PostgreSQL]
     B --> D[Bounded executor]
-    D --> E[Mock inference client]
-    E -->|429| F[Exponential sleep]
+    D --> E[HTTP inference client]
+    E --> H[Mock HTTP endpoint]
+    H -->|HTTP 429| F[Exponential sleep]
     F --> E
-    E -->|terminal result| C
+    H -->|HTTP 200| C
     C --> G[Status and results APIs]
 ```
 
-The executor has a fixed worker count and bounded queue. Admission is serialized
-and checks that the entire batch fits before scheduling, preventing a partially
-accepted batch under normal operation. Each prompt has an atomic state transition;
+The executor has a fixed worker count and bounded queue. A fair semaphore
+atomically reserves capacity for the entire batch before it is persisted or
+scheduled. Each prompt has an atomic state transition;
 the synchronized terminal update publishes its indexed result and counters before
 publishing the final batch state. Results are sorted by input index.
 
@@ -74,6 +80,15 @@ Only rate-limit failures are retried. Defaults are attempt 1, 100 ms backoff,
 attempt 2, 200 ms backoff, then attempt 3. Tests inject `Sleeper`, so retry unit
 tests perform no real waiting. Interrupted sleep restores the interrupt flag and
 records that prompt as failed.
+
+Terminal database writes have bounded immediate retries with injectable sleeping.
+Exhausted writes enter an in-process reconciliation queue; restart recovery remains
+the final fallback if the process exits while the database is unavailable.
+
+`POST /mock/v1/inference` is intentionally hosted in the same process for this
+exercise, but workers reach it through the HTTP stack. The `InferenceClient`
+boundary can be redirected to a separate model service without changing retry
+or batch processing code.
 
 ## Configuration
 
@@ -86,6 +101,9 @@ records that prompt as failed.
 | `MAX_ATTEMPTS` | `3` |
 | `INITIAL_BACKOFF_MS` | `100` |
 | `MOCK_RATE_LIMIT_EVERY` | `4` |
+| `INFERENCE_ENDPOINT_BASE_URL` | Loopback application URL |
+| `PERSISTENCE_MAX_ATTEMPTS` | `3` |
+| `PERSISTENCE_RETRY_MS` | `1000` |
 | `JDBC_DATABASE_URL` | Local H2 file |
 | `DB_USERNAME` | `sa` |
 | `DB_PASSWORD` | empty |

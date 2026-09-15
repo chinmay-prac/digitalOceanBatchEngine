@@ -10,7 +10,7 @@ The service must acknowledge ingestion immediately while processing continues in
 
 ### Functional
 
-- Accept a multipart UTF-8 `.txt` file containing one prompt per non-blank line, up to 1,000 prompts by default.
+- Accept either a raw JSON prompt array or a multipart UTF-8 `.txt` file containing one prompt per non-blank line, up to 1,000 prompts by default.
 - Return an acknowledgement immediately.
 - Process prompts in the background.
 - Distribute work across a bounded pool of concurrent workers.
@@ -35,10 +35,10 @@ The service must acknowledge ingestion immediately while processing continues in
 
 These decisions fill gaps in the supplied prompt and should be confirmed if possible:
 
-- Implement ingestion as a multipart UTF-8 `.txt` file upload with one prompt per line.
+- Support both raw JSON-array ingestion and multipart UTF-8 `.txt` upload with one prompt per line.
 - Each prompt is a non-blank string.
 - Maximum batch size is configurable and defaults to 1,000.
-- The mock endpoint is implemented through an injectable `InferenceClient` in the same codebase.
+- The mock is a real HTTP endpoint in the same application, called through an injectable HTTP `InferenceClient`.
 - Retry only HTTP 429/rate-limit failures.
 - Use three total attempts by default.
 - Use exponential backoff beginning at 100 milliseconds.
@@ -64,6 +64,19 @@ These decisions fill gaps in the supplied prompt and should be confirmed if poss
 ## 5. API Contract
 
 ### 5.1 Submit a Batch
+
+JSON-array form:
+
+```http
+POST /api/v1/batches
+Content-Type: application/json
+```
+
+```json
+["Explain bounded concurrency", "Summarize the retry strategy"]
+```
+
+Multipart-file form:
 
 ```http
 POST /api/v1/batches
@@ -95,7 +108,8 @@ Successful response:
 Validation:
 
 - `file` must be present, non-empty, UTF-8 text, and use a `.txt` filename.
-- Every line must contain a non-blank prompt.
+- JSON input must be a non-empty array of strings.
+- Every uploaded line or JSON array item must contain a non-blank prompt.
 - Batch size must not exceed `inference.max-batch-size`.
 - Malformed input returns `400 Bad Request`.
 
@@ -199,9 +213,10 @@ flowchart TD
     A["Batch API"] --> B["PostgreSQL batch store"]
     B --> C["Bounded executor"]
     C --> D["Retryable inference service"]
-    D --> E["Mock inference client"]
-    E -->|"Success"| F["Thread-safe result aggregation"]
-    E -->|"HTTP 429"| G["Sleep with backoff"]
+    D --> E["HTTP inference client"]
+    E --> I["Mock HTTP endpoint"]
+    I -->|"Success"| F["Thread-safe result aggregation"]
+    I -->|"HTTP 429"| G["Sleep with backoff"]
     G --> D
     F --> B
     H["Status and results APIs"] --> B
@@ -214,7 +229,8 @@ flowchart TD
 - `BatchProcessor`: Execute one prompt and publish its terminal outcome.
 - `RetryableInferenceService`: Apply retry policy around the client.
 - `InferenceClient`: Abstraction for inference calls.
-- `MockInferenceClient`: Deterministic mock rate-limited implementation.
+- `MockInferenceClient`: Loopback HTTP adapter implementing `InferenceClient`.
+- `MockInferenceController`: Deterministic endpoint returning real HTTP 200/429 responses.
 - `Sleeper`: Abstraction around sleeping for testability.
 - `JdbcBatchStore`: Transactional persisted batch and prompt state.
 - `InMemoryBatchStore`: Concurrent map used only for active batch contexts.
@@ -253,6 +269,7 @@ flowchart TD
 
 - `corePoolSize == maxPoolSize == inference.worker-count`.
 - Executor queue capacity is configured.
+- A semaphore atomically reserves worker-plus-queue capacity for the complete batch before persistence.
 - Use an explicit rejection policy.
 - The request must not silently lose work when the executor queue is full.
 
@@ -295,6 +312,7 @@ Attempt 3
 - Unknown batch: `404 Not Found`.
 - Full executor before scheduling: reject cleanly, preferably `503 Service Unavailable`, rather than acknowledge work that will be lost.
 - Individual inference failure: record it in the batch; do not fail unrelated prompt tasks.
+- Transient completion-persistence failure: retry, then queue for in-process reconciliation.
 - Unexpected controller error: consistent `500` response without internal stack traces.
 
 Example error body:
@@ -345,7 +363,7 @@ management:
 
 Highest-priority tests:
 
-1. Valid text-file batch returns `202` before processing completes.
+1. Valid JSON-array and text-file batches return `202` before processing completes.
 2. Empty and oversized batches return `400`.
 3. Executor concurrency never exceeds configured worker count.
 4. `429 → success` retries and records a successful prompt.
@@ -359,6 +377,7 @@ Highest-priority tests:
 12. Status/results return `404` for an unknown batch.
 13. Persisted terminal results survive context loss.
 14. Startup recovery marks unfinished persisted prompts failed.
+15. The mock endpoint returns HTTP 429 and the batch-level client recovers.
 
 Tests must mock `Sleeper`; they must not wait for real backoff durations.
 

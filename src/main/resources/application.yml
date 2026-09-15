@@ -23,6 +23,9 @@ inference:
   max-attempts: ${MAX_ATTEMPTS:3}
   initial-backoff-ms: ${INITIAL_BACKOFF_MS:100}
   mock-rate-limit-every: ${MOCK_RATE_LIMIT_EVERY:4}
+  persistence-max-attempts: ${PERSISTENCE_MAX_ATTEMPTS:3}
+  persistence-retry-ms: ${PERSISTENCE_RETRY_MS:1000}
+  endpoint-base-url: "${INFERENCE_ENDPOINT_BASE_URL:}"
 
 management:
   endpoints:

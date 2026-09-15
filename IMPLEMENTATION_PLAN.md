@@ -13,7 +13,7 @@
 | Time | Outcome |
 | --- | --- |
 | 0–10 min | Freeze scope and verify the existing Spring Boot scaffold |
-| 10–40 min | TXT upload through concurrent mock inference and aggregation |
+| 10–40 min | JSON/TXT ingestion through concurrent HTTP mock inference and aggregation |
 | 40–60 min | 429 retry/backoff, validation, and overload handling |
 | 60–72 min | Focused automated tests |
 | 72–82 min | Actuator, README, Docker, and deployment configuration |
@@ -23,8 +23,8 @@
 
 ### Questions
 
-1. Implement the mock inference endpoint through an injectable in-process client.
-2. Accept a multipart UTF-8 `.txt` upload with one non-blank prompt per line.
+1. Implement a real mock HTTP endpoint and call it through an injectable HTTP client.
+2. Accept both a raw JSON prompt array and a multipart UTF-8 `.txt` upload with one non-blank prompt per line.
 3. Use three total attempts with exponential backoff.
 4. After attempts are exhausted, mark that prompt failed and allow the batch to finish.
 5. Retrieve aggregated output as JSON through the results endpoint.
@@ -109,7 +109,7 @@
 ### Work
 
 - Add `InferenceClient` interface.
-- Add a simple successful mock client first.
+- Add a simple successful mock HTTP endpoint and client first.
 - Add `BatchProcessor` for one prompt.
 - Add `BatchService` to register and schedule a batch.
 - Add `POST /api/v1/batches`.
@@ -119,7 +119,7 @@
 
 ### Tests
 
-- Valid `.txt` upload returns `202` and a batch ID.
+- Valid JSON-array and `.txt` uploads return `202` and a batch ID.
 - Background tasks eventually complete.
 - Results preserve input order even when completion order differs.
 - Unknown batch returns `404`.
@@ -140,7 +140,7 @@
 
 ### Cursor Prompt
 
-> Implement only Section 3: one complete happy-path vertical slice from POST batch to bounded asynchronous processing and ordered result retrieval. Use a successful mock `InferenceClient`. Return 202 without waiting. Do not implement retry or the status extension yet. Add focused tests and run the full suite.
+> Implement only Section 3: one complete happy-path vertical slice from POST batch to bounded asynchronous HTTP inference and ordered result retrieval. Use the mock HTTP endpoint through `InferenceClient`. Return 202 without waiting. Do not implement retry or the status extension yet. Add focused tests and run the full suite.
 
 ## Section 4 — Rate-Limit Retry
 
@@ -193,7 +193,7 @@
 
 ### Tests
 
-- Missing, empty, non-TXT, blank-line, and oversized uploads return `400`.
+- Missing, empty, non-TXT, blank, and oversized inputs return `400`.
 - Unknown batch returns `404`.
 - Executor saturation has explicit behavior.
 
@@ -343,6 +343,10 @@ Smoke-test sequence:
 ```bash
 curl -X POST http://localhost:8080/api/v1/batches \
   -F 'file=@prompts.txt;type=text/plain'
+
+curl -X POST http://localhost:8080/api/v1/batches \
+  -H 'Content-Type: application/json' \
+  -d '["one","two","three","four"]'
 
 curl http://localhost:8080/api/v1/batches/{batchId}
 

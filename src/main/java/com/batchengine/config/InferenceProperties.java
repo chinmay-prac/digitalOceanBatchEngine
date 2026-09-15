@@ -20,6 +20,11 @@ public class InferenceProperties {
     private long initialBackoffMs = 100;
     @Min(0)
     private int mockRateLimitEvery = 4;
+    @Min(1)
+    private int persistenceMaxAttempts = 3;
+    @Min(0)
+    private long persistenceRetryMs = 1000;
+    private String endpointBaseUrl = "";
 
     public int getMaxBatchSize() { return maxBatchSize; }
     public void setMaxBatchSize(int value) { this.maxBatchSize = value; }
@@ -33,4 +38,10 @@ public class InferenceProperties {
     public void setInitialBackoffMs(long value) { this.initialBackoffMs = value; }
     public int getMockRateLimitEvery() { return mockRateLimitEvery; }
     public void setMockRateLimitEvery(int value) { this.mockRateLimitEvery = value; }
+    public int getPersistenceMaxAttempts() { return persistenceMaxAttempts; }
+    public void setPersistenceMaxAttempts(int value) { this.persistenceMaxAttempts = value; }
+    public long getPersistenceRetryMs() { return persistenceRetryMs; }
+    public void setPersistenceRetryMs(long value) { this.persistenceRetryMs = value; }
+    public String getEndpointBaseUrl() { return endpointBaseUrl; }
+    public void setEndpointBaseUrl(String value) { this.endpointBaseUrl = value; }
 }
